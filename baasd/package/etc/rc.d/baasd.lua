@@ -1,7 +1,7 @@
-local implementation = require("libdrone")
+local implementation = require("libbaas")
 
 function start()
-    implementation.StartService(true)
+    implementation.StartService()
 end
 
 function stop()

@@ -247,10 +247,20 @@ function lib.StopService()
         lib.OnRemove(COMPONENTREMOVEEVENT, device, MODEMTYPE)
     end
 
-    Listeners = nil
-    Message = nil
+    Listeners = {}
+    Message = {}
 
     running = false
+end
+
+function lib.ServiceStatus()
+    if (running == true) then
+        print("Drone Deamon is currently RUNNING")
+    else
+        print("Drone Deamon is currently STOPPED")
+    end
+
+    return running
 end
 
 return lib
