@@ -1,21 +1,21 @@
 --Logging facility
 
-local Log = {}
+local lib = {}
 
-function Log.Fatal(message)
+function lib.Fatal(message)
     error("FATAL: " .. message)
 end
 
-function Log.Error(message)
+function lib.Error(message)
     print("ERROR: " .. message)
 end
 
-function Log.Warning(message)
+function lib.Warning(message)
     print("WARNING: " .. message)
 end
 
-function Log.Info(message)
+function lib.Info(message)
     print("INFO: " .. message)
 end
 
-return Log
+return lib

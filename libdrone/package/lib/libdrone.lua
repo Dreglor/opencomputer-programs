@@ -4,7 +4,7 @@ local lib = {}
 local component = require("component")
 local event = require("event")
 local serialization = require("serialization")
-local log = require("libLog")
+local log = require("liblog")
 
 --const
 local MODEMTYPE = "modem"
@@ -13,7 +13,7 @@ local COMPONENTADDEVENT = "component_added"
 local COMPONENTREMOVEEVENT = "component_removed"
 local MODEMMESSAGEEVENT = "modem_message"
 
-local running = true
+local running = false
 local PORT = 1111
 
 --static
@@ -240,7 +240,8 @@ function lib.StopService()
 
     event.ignore(COMPONENTADDEVENT, lib.OnAdd)
     event.ignore(COMPONENTREMOVEEVENT, lib.OnRemove)
-    event.ignore(MODEMMESSAGEEVENT, lib.OnTraffic)
+    event.ignore(MODEMMESSAGEEVENT, lib.OnRequest)
+    event.ignore(MODEMMESSAGEEVENT, lib.OnResponse)
 
     for device in component.list(MODEMTYPE) do
         lib.OnRemove(COMPONENTREMOVEEVENT, device, MODEMTYPE)
