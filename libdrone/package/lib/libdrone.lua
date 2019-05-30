@@ -9,12 +9,15 @@ local log = require("liblog")
 --const
 local MODEMTYPE = "modem"
 local STRINGTYPE = "string"
+local TABLETYPE = "table"
 local COMPONENTADDEVENT = "component_added"
 local COMPONENTREMOVEEVENT = "component_removed"
 local MODEMMESSAGEEVENT = "modem_message"
+local WAKEMESSAGE = "WAKE"
 
 local running = false
-local PORT = 1111
+local REQUESTPORT = 1111
+local RESPONSEPORT = 1112
 
 --static
 local Listeners = {} --proxy table for all modem devices
@@ -31,21 +34,30 @@ function lib.OnAdd(_, address, type)
     end
 
     local modem = component.proxy(address)
-    modem.open(PORT)
-    if (modem.isOpen(PORT) == false) then
-        log.Error("Failed to open " .. PORT .. " on device " .. address ..
+    modem.open(REQUESTPORT)
+    if (modem.isOpen(REQUESTPORT) == false) then
+        log.Error("Failed to open " .. REQUESTPORT .. " on device " .. address ..
+                  " for listening, is there another instance using the port?")
+        return
+    end
+
+    modem.open(RESPONSEPORT)
+    if (modem.isOpen(RESPONSEPORT) == false) then
+        log.Error("Failed to open " .. RESPONSEPORT .. " on device " .. address ..
                   " for listening, is there another instance using the port?")
         return
     end
 
     if (Listeners[address] ~= nil) then
         log.Warning("Device already registered for listening, closing device")
-        Listeners[address].close(PORT)
+        Listeners[address].close(REQUESTPORT)
+        Listeners[address].close(RESPONSEPORT)
         Listeners[address] = nil
     end
 
+    modem.setWakeMessage(WAKEMESSAGE)
     Listeners[address] = modem
-    log.Info("Started listening on port " .. PORT .. " with device " .. address)
+    log.Info("Started listening on port " .. REQUESTPORT .. " & " .. RESPONSEPORT .. " with device " .. address)
 end
 
 function lib.OnRemove(_, address, type)
@@ -63,9 +75,13 @@ function lib.OnRemove(_, address, type)
     log.Info("Removed interface from listening list " .. address)
 end
 
-function lib.Send(interface, sendto, code)
+function lib.Send(interface, sendto, code, port)
+    if (port == nil) then
+        port = REQUESTPORT
+    end
+
     if (#code < PACKETSIZE) then
-        if (Listeners[interface].send(sendto, PORT, code) == false) then
+        if (Listeners[interface].send(sendto, port, code) == false) then
             log.Fatal("Unable to send message response back, this should always work unless the device has " ..
                           "been removed!")
         end
@@ -83,7 +99,7 @@ function lib.Send(interface, sendto, code)
         local i = 0
         local fragment = string.sub(code, i * PACKETSIZE, (i + 1) * PACKETSIZE)
         while (fragment ~= nil) do
-            if (Listeners[interface].send(sendto, PORT, fragment) == false) then
+            if (Listeners[interface].send(sendto, port, fragment) == false) then
                 log.Fatal("Unable to send message fragment back, this should always work unless the device has " ..
                           "been removed!")
             end
@@ -94,19 +110,23 @@ function lib.Send(interface, sendto, code)
     end
 end
 
-function lib.Broadcast(code, interfaces)
+function lib.Broadcast(code, interface, port)
+    if (port == nil) then
+        port = REQUESTPORT
+    end
+
     local broadcasting = {}
-    if (interfaces ~= nil) then
+    if (interface == nil) then
         for address, _ in pairs(Listeners) do
-            broadcasting[#broadcasting + 1] = {address}
+            broadcasting[#broadcasting + 1] = address
         end
     else
-        broadcasting[1] = {interfaces}
+        broadcasting = {interface}
     end
 
     for _, address in ipairs(broadcasting) do
         if (#code < PACKETSIZE) then
-            Listeners[address].broadcast(PORT, code)
+            Listeners[address].broadcast(port, code)
         else
             if (#code == PACKETSIZE) then
                 -- pad out one character to ensure to avoid corner cases
@@ -117,7 +137,7 @@ function lib.Broadcast(code, interfaces)
             local i = 0
             local fragment = string.sub(code, i * PACKETSIZE, (i + 1) * PACKETSIZE)
             while (fragment ~= nil) do
-                if (Listeners[address].broadcast(PORT, fragment) == false) then
+                if (Listeners[address].broadcast(port, fragment) == false) then
                     log.Fatal("Unable to send message fragment back, this should always work unless the device has " ..
                               "been removed!")
                 end
@@ -131,7 +151,7 @@ end
 
 --event Handlers
 function lib.OnRequest(_, sentTo, from, port, _, data)
-    if (port ~= PORT) then
+    if (port ~= REQUESTPORT) then
         return
     end
 
@@ -154,8 +174,8 @@ function lib.OnRequest(_, sentTo, from, port, _, data)
     Message[sentTo..from] = Message[sentTo..from] .. data
 
     if (#data < PACKETSIZE) then
-        event.push(lib.REQUESTEVENT)
-        local func, error = load(Message)
+        event.push(lib.REQUESTEVENT, sentTo, from, Message[sentTo..from])
+        local func, error = load(Message[sentTo..from])
 
         --message complete, clear for next message
         Message[sentTo..from] = nil
@@ -166,20 +186,18 @@ function lib.OnRequest(_, sentTo, from, port, _, data)
 
             --mimic packed protected call response to return the error
             response = serialization.serialize({false, "Load failed: " .. error, n=2})
-
         else
             --respond with result of protected call of the requested message
             response = serialization.serialize(pcall(table.pack(func())))
-
         end
 
         --send response
-        lib.Send(sentTo, from, response)
+        lib.Send(sentTo, from, response, RESPONSEPORT)
     end
 end
 
 function lib.OnResponse(_, sentTo, from, port, _, data)
-    if (port ~= PORT) then
+    if (port ~= RESPONSEPORT) then
         return
     end
 
@@ -204,6 +222,16 @@ function lib.OnResponse(_, sentTo, from, port, _, data)
     if (#data < PACKETSIZE) then
         event.push(lib.RESPONSEEVENT, sentTo, from, serialization.unserialize(Message[sentTo..from]))
         Message[sentTo..from] = nil
+    end
+end
+
+function lib.SendWake(interface, address)
+    if (interface == nil) then
+        for _, modem in pairs(Listeners) do
+            modem.broadcast(1, WAKEMESSAGE)
+        end
+    else
+        Listeners[interface].send(address, 1, WAKEMESSAGE)
     end
 end
 
