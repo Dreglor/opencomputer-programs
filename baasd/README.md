@@ -21,7 +21,8 @@ after the discovery phase the service will map species of bees to products and t
 map definition is as follows:
 ```
 {
-    "Species name" = {"product name", "..."}
+    "Species name" = {"product name", "..."},
+    ...
 }
 ```
 Species name and product name can both be unlocalized or localized (ie 'coal' or 'minecraft:coal')

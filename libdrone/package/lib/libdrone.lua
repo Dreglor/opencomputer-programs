@@ -9,7 +9,6 @@ local log = require("liblog")
 --const
 local MODEMTYPE = "modem"
 local STRINGTYPE = "string"
-local TABLETYPE = "table"
 local COMPONENTADDEVENT = "component_added"
 local COMPONENTREMOVEEVENT = "component_removed"
 local MODEMMESSAGEEVENT = "modem_message"
