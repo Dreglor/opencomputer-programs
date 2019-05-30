@@ -149,8 +149,8 @@ function lib.Broadcast(code, interface, port)
 end
 
 --event Handlers
-function lib.OnRequest(_, sentTo, from, port, _, data)
-    if (port ~= REQUESTPORT) then
+function lib.OnNetwork(_, sentTo, from, port, _, data)
+    if (port ~= REQUESTPORT and port ~= RESPONSEPORT) then
         return
     end
 
@@ -165,62 +165,39 @@ function lib.OnRequest(_, sentTo, from, port, _, data)
         return
     end
 
-    if (Message[sentTo..from] == nil) then
-        Message[sentTo..from] = ""
+    local key = sentTo..from
+
+    if (Message[key] == nil) then
+        Message[key] = ""
     end
 
     --append message with recieved data
-    Message[sentTo..from] = Message[sentTo..from] .. data
+    Message[key] = Message[key] .. data
 
     if (#data < PACKETSIZE) then
-        event.push(lib.REQUESTEVENT, sentTo, from, Message[sentTo..from])
-        local func, error = load(Message[sentTo..from])
+        if (port == REQUESTPORT) then
+            event.push(lib.REQUESTEVENT, sentTo, from, Message[key])
+            local func, error = load(Message[key])
 
-        --message complete, clear for next message
-        Message[sentTo..from] = nil
+            local response
+            if (func == nil) then
+                log.Error("Message sent could not be compiled into a lua function, reason follows: " .. error)
 
-        local response
-        if (func == nil) then
-            log.Error("Message sent could not be compiled into a lua function, reason follows: " .. error)
+                --mimic packed protected call response to return the error
+                response = serialization.serialize({false, "Load failed: " .. error, n=2})
+            else
+                --respond with result of protected call of the requested message
+                response = serialization.serialize(table.pack(pcall(func)))
+            end
 
-            --mimic packed protected call response to return the error
-            response = serialization.serialize({false, "Load failed: " .. error, n=2})
+            --send response
+            lib.Send(sentTo, from, response, RESPONSEPORT)
         else
-            --respond with result of protected call of the requested message
-            response = serialization.serialize(pcall(table.pack(func())))
+            event.push(lib.RESPONSEEVENT, sentTo, from, serialization.unserialize(Message[key]))
         end
 
-        --send response
-        lib.Send(sentTo, from, response, RESPONSEPORT)
-    end
-end
-
-function lib.OnResponse(_, sentTo, from, port, _, data)
-    if (port ~= RESPONSEPORT) then
-        return
-    end
-
-    if (Listeners[sentTo] == nil) then
-        log.Error("Dropping traffic received on device that is not registered for listening [" .. from .. " -> "..
-                  sentTo .. "]")
-        return
-    end
-
-    if (type(data) ~= STRINGTYPE) then
-        log.Error("Dropping traffic that was not a string type.")
-        return
-    end
-
-    if (Message[sentTo..from] == nil) then
-        Message[sentTo..from] = ""
-    end
-
-    --append message with recieved data
-    Message[sentTo..from] = Message[sentTo..from] .. data
-
-    if (#data < PACKETSIZE) then
-        event.push(lib.RESPONSEEVENT, sentTo, from, serialization.unserialize(Message[sentTo..from]))
-        Message[sentTo..from] = nil
+        --message complete, clear for next message
+        Message[key] = nil
     end
 end
 
@@ -235,7 +212,7 @@ function lib.SendWake(interface, address)
 end
 
 --Service functions
-function lib.StartService(client)
+function lib.StartService()
     if (running == true) then
         return
     end
@@ -247,12 +224,7 @@ function lib.StartService(client)
     --register event handlers
     event.listen(COMPONENTADDEVENT, lib.OnAdd)
     event.listen(COMPONENTREMOVEEVENT, lib.OnRemove)
-
-    if (client == true) then
-        event.listen(MODEMMESSAGEEVENT, lib.OnRequest)
-    else
-        event.listen(MODEMMESSAGEEVENT, lib.OnResponse)
-    end
+    event.listen(MODEMMESSAGEEVENT, lib.OnNetwork)
 
     running = true
     log.Info("Drone ready...")
@@ -267,8 +239,7 @@ function lib.StopService()
 
     event.ignore(COMPONENTADDEVENT, lib.OnAdd)
     event.ignore(COMPONENTREMOVEEVENT, lib.OnRemove)
-    event.ignore(MODEMMESSAGEEVENT, lib.OnRequest)
-    event.ignore(MODEMMESSAGEEVENT, lib.OnResponse)
+    event.ignore(MODEMMESSAGEEVENT, lib.OnNetwork)
 
     for device in component.list(MODEMTYPE) do
         lib.OnRemove(COMPONENTREMOVEEVENT, device, MODEMTYPE)
