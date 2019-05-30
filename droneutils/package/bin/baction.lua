@@ -25,7 +25,7 @@ if (ops['t'] ~= nil and ops['time'] ~= nil) then
 end
 
 if (ops['t'] ~= nil) then
-    timeout = args[1]
+    timeout = tonumber(args[1])
     commandIndex = commandIndex + 1
     optionCount = optionCount + 1
 end
