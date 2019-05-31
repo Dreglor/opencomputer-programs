@@ -14,7 +14,7 @@ local COMPONENTREMOVEEVENT = "component_removed"
 local MODEMMESSAGEEVENT = "modem_message"
 local WAKEMESSAGE = "WAKE"
 
-local running = false
+local Running = false
 local REQUESTPORT = 1111
 local RESPONSEPORT = 1112
 
@@ -96,15 +96,15 @@ function lib.Send(interface, sendto, code, port)
 
         --split and send large results
         local i = 0
-        local fragment = string.sub(code, i * PACKETSIZE, (i + 1) * PACKETSIZE)
-        while (fragment ~= nil) do
+        local fragment = string.sub(code, 1, PACKETSIZE)
+        while (fragment ~= "") do
             if (Interfaces[interface].send(sendto, port, fragment) == false) then
                 log.Fatal("Unable to send message fragment back, this should always work unless the device has " ..
                           "been removed!")
             end
 
             i = i + 1
-            fragment = string.sub(code, i * PACKETSIZE, (i + 1) * PACKETSIZE)
+            fragment = string.sub(code, (i * PACKETSIZE) + 1, (i + 1) * PACKETSIZE)
         end
     end
 end
@@ -134,15 +134,15 @@ function lib.Broadcast(code, interface, port)
 
             --split and send large results
             local i = 0
-            local fragment = string.sub(code, i * PACKETSIZE, (i + 1) * PACKETSIZE)
-            while (fragment ~= nil) do
+            local fragment = string.sub(code, 1, PACKETSIZE)
+            while (fragment ~= "") do
                 if (Interfaces[address].broadcast(port, fragment) == false) then
                     log.Fatal("Unable to send message fragment back, this should always work unless the device has " ..
                               "been removed!")
                 end
 
                 i = i + 1
-                fragment = string.sub(code, i * PACKETSIZE, (i + 1) * PACKETSIZE)
+                fragment = string.sub(code, (i * PACKETSIZE) + 1, (i + 1) * PACKETSIZE)
             end
         end
     end
@@ -215,7 +215,7 @@ end
 
 --Service functions
 function lib.StartService()
-    if (running == true) then
+    if (runniRunningng == true) then
         return
     end
 
@@ -228,12 +228,12 @@ function lib.StartService()
     event.listen(COMPONENTREMOVEEVENT, lib.OnRemove)
     event.listen(MODEMMESSAGEEVENT, lib.OnNetwork)
 
-    running = true
+    Running = true
     log.Info("Drone ready...")
 end
 
 function lib.StopService()
-    if (running ~= true) then
+    if (Running ~= true) then
         return
     end
 
@@ -250,17 +250,17 @@ function lib.StopService()
     Interfaces = {}
     Message = {}
 
-    running = false
+    Running = false
 end
 
 function lib.ServiceStatus()
-    if (running == true) then
+    if (Running == true) then
         print("Drone Deamon is currently RUNNING")
     else
         print("Drone Deamon is currently STOPPED")
     end
 
-    return running
+    return Running
 end
 
 return lib
