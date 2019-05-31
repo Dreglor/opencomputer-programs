@@ -215,7 +215,7 @@ end
 
 --Service functions
 function lib.StartService()
-    if (runniRunningng == true) then
+    if (Running == true) then
         return
     end
 
