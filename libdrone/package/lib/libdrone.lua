@@ -19,7 +19,7 @@ local REQUESTPORT = 1111
 local RESPONSEPORT = 1112
 
 --static
-local Listeners = {} --proxy table for all modem devices
+local Interfaces = {} --proxy table for all modem devices
 local Message = {} --message dictionary buffers keyed on localAddress+remoteAddress so race conditions shouldn't occur
 local PACKETSIZE = 4096 --max packet size default in config is 8192
 
@@ -47,15 +47,15 @@ function lib.OnAdd(_, address, type)
         return
     end
 
-    if (Listeners[address] ~= nil) then
+    if (Interfaces[address] ~= nil) then
         log.Warning("Device already registered for listening, closing device")
-        Listeners[address].close(REQUESTPORT)
-        Listeners[address].close(RESPONSEPORT)
-        Listeners[address] = nil
+        Interfaces[address].close(REQUESTPORT)
+        Interfaces[address].close(RESPONSEPORT)
+        Interfaces[address] = nil
     end
 
     modem.setWakeMessage(WAKEMESSAGE)
-    Listeners[address] = modem
+    Interfaces[address] = modem
     log.Info("Started listening on port " .. REQUESTPORT .. " & " .. RESPONSEPORT .. " with device " .. address)
 end
 
@@ -64,13 +64,13 @@ function lib.OnRemove(_, address, type)
         return
     end
 
-    if (Listeners[address] == nil) then
+    if (Interfaces[address] == nil) then
         log.Warning("Device was not registered for listening, ignoring")
         return
     end
 
     --no need to close the port the device removal will do that for us
-    Listeners[address] = nil
+    Interfaces[address] = nil
     log.Info("Removed interface from listening list " .. address)
 end
 
@@ -80,7 +80,7 @@ function lib.Send(interface, sendto, code, port)
     end
 
     if (#code < PACKETSIZE) then
-        if (Listeners[interface].send(sendto, port, code) == false) then
+        if (Interfaces[interface].send(sendto, port, code) == false) then
             log.Fatal("Unable to send message response back, this should always work unless the device has " ..
                           "been removed!")
         end
@@ -98,7 +98,7 @@ function lib.Send(interface, sendto, code, port)
         local i = 0
         local fragment = string.sub(code, i * PACKETSIZE, (i + 1) * PACKETSIZE)
         while (fragment ~= nil) do
-            if (Listeners[interface].send(sendto, port, fragment) == false) then
+            if (Interfaces[interface].send(sendto, port, fragment) == false) then
                 log.Fatal("Unable to send message fragment back, this should always work unless the device has " ..
                           "been removed!")
             end
@@ -116,7 +116,7 @@ function lib.Broadcast(code, interface, port)
 
     local broadcasting = {}
     if (interface == nil) then
-        for address, _ in pairs(Listeners) do
+        for address, _ in pairs(Interfaces) do
             broadcasting[#broadcasting + 1] = address
         end
     else
@@ -125,7 +125,7 @@ function lib.Broadcast(code, interface, port)
 
     for _, address in ipairs(broadcasting) do
         if (#code < PACKETSIZE) then
-            Listeners[address].broadcast(port, code)
+            Interfaces[address].broadcast(port, code)
         else
             if (#code == PACKETSIZE) then
                 -- pad out one character to ensure to avoid corner cases
@@ -136,7 +136,7 @@ function lib.Broadcast(code, interface, port)
             local i = 0
             local fragment = string.sub(code, i * PACKETSIZE, (i + 1) * PACKETSIZE)
             while (fragment ~= nil) do
-                if (Listeners[address].broadcast(port, fragment) == false) then
+                if (Interfaces[address].broadcast(port, fragment) == false) then
                     log.Fatal("Unable to send message fragment back, this should always work unless the device has " ..
                               "been removed!")
                 end
@@ -154,7 +154,7 @@ function lib.OnNetwork(_, sentTo, from, port, _, data)
         return
     end
 
-    if (Listeners[sentTo] == nil) then
+    if (Interfaces[sentTo] == nil) then
         log.Error("Dropping traffic received on device that is not registered for listening [" .. from .. " -> "..
                   sentTo .. "]")
         return
@@ -205,11 +205,11 @@ end
 
 function lib.SendWake(interface, address)
     if (interface == nil) then
-        for _, modem in pairs(Listeners) do
+        for _, modem in pairs(Interfaces) do
             modem.broadcast(1, WAKEMESSAGE)
         end
     else
-        Listeners[interface].send(address, 1, WAKEMESSAGE)
+        Interfaces[interface].send(address, 1, WAKEMESSAGE)
     end
 end
 
@@ -247,7 +247,7 @@ function lib.StopService()
         lib.OnRemove(COMPONENTREMOVEEVENT, device, MODEMTYPE)
     end
 
-    Listeners = {}
+    Interfaces = {}
     Message = {}
 
     running = false
