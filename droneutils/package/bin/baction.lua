@@ -15,7 +15,6 @@ local usage = "Usage: baction (OPTIONS) 'COMMAND'\n" ..
 local timeout = 0.1
 local commandIndex = 1
 local code
-local responses = {}
 local optionCount = 0
 
 if (ops['t'] ~= nil and ops['time'] ~= nil) then
@@ -61,7 +60,7 @@ local function EventHandler(_, interface, from, response)
         print("[" .. from .. "] @ [" .. interface .. "] returned (successful?: " .. tostring(result[1]) .. ")")
     else
         print("[" .. from .. "] @ [" .. interface .. "] returned (successful?: " .. tostring(result[1]) .. "): " ..
-              tostring(result[2]))
+              serialization.serialize(result[2], true, 10000))
     end
 end
 
