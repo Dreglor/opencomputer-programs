@@ -50,5 +50,4 @@ local head = "local io=require('io');local handle=io.open('" .. destination .. "
 local body = serialization.serialize(data)
 local tail = ";print(data);handle:write(data);handle:close()"
 
---local temp, _ = string.gsub(head..body..tail,"\\","\\\\")
 drone.Broadcast(head..body..tail)
