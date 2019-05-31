@@ -1,7 +1,7 @@
 local shell = require("shell")
 local os = require("os")
-local serialization = require("serialization")
 local event = require("event")
+local serialization = require("serialization")
 
 local log = require("liblog")
 local drone = require("libdrone")
@@ -56,21 +56,16 @@ end
 code = args[commandIndex]
 
 local function EventHandler(_, interface, from, response)
-    responses[#responses + 1] = {
-        ["interface"] = interface,
-        ["from"] = from,
-        ["successful"] = response[1],
-        ["result"] = response[2]
-    }
+    local result = serialization.unserialize(response)
+    if (result[2] == nil) then
+        print("[" .. from .. "] @ [" .. interface .. "] returned (successful?: " .. tostring(result[1]) .. ")")
+    else
+        print("[" .. from .. "] @ [" .. interface .. "] returned (successful?: " .. tostring(result[1]) .. "): " ..
+              tostring(result[2]))
+    end
 end
 
 event.listen(drone.RESPONSEEVENT, EventHandler)
 drone.Broadcast(code)
 os.sleep(timeout)
-
-for _, response in ipairs(responses) do
-    print("[" .. response.from .. "] @ [" .. response.interface .. "] returned (successful?: " ..
-          response.successful .. "): " .. response.result)
-end
-
 event.ignore(drone.RESPONSEEVENT, EventHandler)

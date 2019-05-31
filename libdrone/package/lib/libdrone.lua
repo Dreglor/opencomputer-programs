@@ -176,6 +176,7 @@ function lib.OnNetwork(_, sentTo, from, port, _, data)
 
     if (#data < PACKETSIZE) then
         if (port == REQUESTPORT) then
+            --process request
             event.push(lib.REQUESTEVENT, sentTo, from, Message[key])
             local func, error = load(Message[key])
 
@@ -193,7 +194,8 @@ function lib.OnNetwork(_, sentTo, from, port, _, data)
             --send response
             lib.Send(sentTo, from, response, RESPONSEPORT)
         else
-            event.push(lib.RESPONSEEVENT, sentTo, from, serialization.unserialize(Message[key]))
+            --process response (pass as string tables cannot be passed)
+            event.push(lib.RESPONSEEVENT, sentTo, from, Message[key])
         end
 
         --message complete, clear for next message
