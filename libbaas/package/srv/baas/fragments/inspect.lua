@@ -159,5 +159,4 @@ for _, interfaceDevice in ipairs(devices.interfaces) do
     end
 end
 
-component.database.clear(1)
 return result;
