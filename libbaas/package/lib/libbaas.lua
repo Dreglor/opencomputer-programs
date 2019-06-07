@@ -237,3 +237,5 @@ function lib.ServiceStatus()
 
     return Running
 end
+
+return lib
