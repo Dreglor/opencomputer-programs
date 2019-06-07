@@ -84,6 +84,13 @@ if (#devices.databases <= 0) then
     return result;
 end
 
+--that database must have a database that is big enough
+local successful, _ = pcall(component.database.computeHash, #devices.interfaces)
+if (successful == false) then
+    log.Error("Database not big enough for array ")
+    return result;
+end
+
 if (#devices.interfaces <= 0) then
     log.Error("Failure to find a single interface component")
     return result;
@@ -96,24 +103,25 @@ if (#devices.interfaces == #devices.housings and #devices.interfaces == devices.
 end
 
 if (component.me_interface.getItemsInNetwork({name = LocatorItem})["n"] == 0) then
-    log.Error("Failure the item used for inspecting clusters (" .. LocatorItem .. ") make sure there is at least one of them stored")
+    log.Error("Failure the finding item used for inspecting clusters (" .. LocatorItem .. ") make sure there is at least one of them stored")
     return result;
 end
 
 --inspect clusters
 log.Info("Inspecting clusters...")
+local DatabaseSlot = 1
 for _, interfaceDevice in ipairs(devices.interfaces) do
     --use an unrelated item to find adjecent transposers
 
     component.database.clear(1)
-    component.database.clear(2)
-    component.me_interface.store({name = LocatorItem}, component.database.address, 1, 1)
-    interfaceDevice.setInterfaceConfiguration(1, component.database.address, 1, 1)
+    component.me_interface.store({name = LocatorItem}, component.database.address, DatabaseSlot, 1)
+    interfaceDevice.setInterfaceConfiguration(DatabaseSlot, component.database.address, DatabaseSlot, 1)
+    component.database.clear(1)
 
     for deviceIndex,transposerDevice in ipairs(devices.transposers) do
         local side = LocateSideItem(transposerDevice, LocatorItem)
 
-        interfaceDevice.setInterfaceConfiguration(1, component.database.address, 2, 1) --clear config
+        interfaceDevice.setInterfaceConfiguration(DatabaseSlot, component.database.address, 1, 1) --clear config
         if (side >= 0) then
             --valid cluster found
             log.Info("found a cluster: {" .. transposerDevice.address .. "},{" .. interfaceDevice.address .. "}")
@@ -123,6 +131,9 @@ for _, interfaceDevice in ipairs(devices.interfaces) do
             cluster.interface = interfaceDevice.address
             cluster.interfaceSide = LocateSideType(transposerDevice, InterfaceName)
             cluster.beeSide = LocateSideType(transposerDevice, BeeAlvearyName)
+            cluster.databaseSlot = DatabaseSlot
+
+            DatabaseSlot = DatabaseSlot + 1
 
              --also support "bee house"
             if (cluster.beeSide < 0) then
