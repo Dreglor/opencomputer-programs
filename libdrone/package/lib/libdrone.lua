@@ -4,6 +4,8 @@ local lib = {}
 local component = require("component")
 local event = require("event")
 local serialization = require("serialization")
+local os = require("os")
+local math = require("math")
 local log = require("liblog")
 
 --const
@@ -22,6 +24,10 @@ local RESPONSEPORT = 1112
 local Interfaces = {} --proxy table for all modem devices
 local Message = {} --message dictionary buffers keyed on localAddress+remoteAddress so race conditions shouldn't occur
 local PACKETSIZE = 4096 --max packet size default in config is 8192
+
+local MAXPACKETSRATE = 4
+local PacketRate = 0
+local Timer
 
 lib.REQUESTEVENT = "DroneRequest"
 lib.RESPONSEEVENT = "DroneResponse"
@@ -74,14 +80,36 @@ function lib.OnRemove(_, address, type)
     log.Info("Removed interface from listening list " .. address)
 end
 
+function lib.Cooldown()
+    if (PacketRate > 0) then
+        PacketRate = PacketRate - 1
+    end
+end
+
+local function GatedSend(device, to, port, data)
+    while (PacketRate >= MAXPACKETSRATE) do
+        os.sleep(1/MAXPACKETSRATE)
+    end
+    PacketRate = PacketRate + 1
+    return device.send(to, port, data)
+end
+
+local function GatedBroadcast(device, port, data)
+    while (PacketRate > 0) do
+        os.sleep(1/MAXPACKETSRATE)
+    end
+    PacketRate = PacketRate + MAXPACKETSRATE
+    return device.broadcast(port, data)
+end
+
 function lib.Send(interface, sendto, code, port)
     if (port == nil) then
         port = REQUESTPORT
     end
 
     if (#code < PACKETSIZE) then
-        if (Interfaces[interface].send(sendto, port, code) == false) then
-            log.Fatal("Unable to send message response back, this should always work unless the device has " ..
+        if (GatedSend(Interfaces[interface], sendto, port, code) == false) then
+            log.Fatal("Unable to send message, this should always work unless the device has " ..
                           "been removed!")
         end
         return
@@ -98,8 +126,8 @@ function lib.Send(interface, sendto, code, port)
         local i = 0
         local fragment = string.sub(code, 1, PACKETSIZE)
         while (fragment ~= "") do
-            if (Interfaces[interface].send(sendto, port, fragment) == false) then
-                log.Fatal("Unable to send message fragment back, this should always work unless the device has " ..
+            if (GatedSend(Interfaces[interface], sendto, port, fragment) == false) then
+                log.Fatal("Unable to send message fragment, this should always work unless the device has " ..
                           "been removed!")
             end
 
@@ -125,7 +153,10 @@ function lib.Broadcast(code, interface, port)
 
     for _, address in ipairs(broadcasting) do
         if (#code < PACKETSIZE) then
-            Interfaces[address].broadcast(port, code)
+            if (GatedBroadcast(Interfaces[address], port, code) == false) then
+                log.Fatal("Unable to broadcast message, this should always work unless the device has " ..
+                              "been removed!")
+            end
         else
             if (#code == PACKETSIZE) then
                 -- pad out one character to ensure to avoid corner cases
@@ -136,8 +167,8 @@ function lib.Broadcast(code, interface, port)
             local i = 0
             local fragment = string.sub(code, 1, PACKETSIZE)
             while (fragment ~= "") do
-                if (Interfaces[address].broadcast(port, fragment) == false) then
-                    log.Fatal("Unable to send message fragment back, this should always work unless the device has " ..
+                if (GatedBroadcast(Interfaces[address], port, fragment) == false) then
+                    log.Fatal("Unable to broadcast message, this should always work unless the device has " ..
                               "been removed!")
                 end
 
@@ -150,6 +181,8 @@ end
 
 --event Handlers
 function lib.OnNetwork(_, sentTo, from, port, _, data)
+    PacketRate = PacketRate + 1
+
     if (port ~= REQUESTPORT and port ~= RESPONSEPORT) then
         return
     end
@@ -227,6 +260,7 @@ function lib.StartService()
     event.listen(COMPONENTADDEVENT, lib.OnAdd)
     event.listen(COMPONENTREMOVEEVENT, lib.OnRemove)
     event.listen(MODEMMESSAGEEVENT, lib.OnNetwork)
+    Timer = event.timer(1/MAXPACKETSRATE, lib.Cooldown, math.huge)
 
     Running = true
     log.Info("Drone ready...")
@@ -242,6 +276,7 @@ function lib.StopService()
     event.ignore(COMPONENTADDEVENT, lib.OnAdd)
     event.ignore(COMPONENTREMOVEEVENT, lib.OnRemove)
     event.ignore(MODEMMESSAGEEVENT, lib.OnNetwork)
+    event.cancel(Timer)
 
     for device in component.list(MODEMTYPE) do
         lib.OnRemove(COMPONENTREMOVEEVENT, device, MODEMTYPE)
