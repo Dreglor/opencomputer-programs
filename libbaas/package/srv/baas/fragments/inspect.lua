@@ -3,7 +3,15 @@ local log = require('libLog')
 
 --[[
     must return:
-    {transposer = <transposer address>, interface = <me_interface address>, beeSide = <side of bee_housing>, interfaceSide = <side of bee_housing>}, ...}
+    {
+        transposer = <transposer address>,
+        interface = <me_interface address>,
+        beeSide = <side of bee_housing>,
+        interfaceSide = <side of bee_housing>},
+        database = <database address>,
+        databaseSlot = <database address>
+         ...
+    }
 ]]
 
 --consts
@@ -103,7 +111,8 @@ if (#devices.interfaces == #devices.housings and #devices.interfaces == devices.
 end
 
 if (component.me_interface.getItemsInNetwork({name = LocatorItem})["n"] == 0) then
-    log.Error("Failure the finding item used for inspecting clusters (" .. LocatorItem .. ") make sure there is at least one of them stored")
+    log.Error("Failure the finding item used for inspecting clusters (" .. LocatorItem ..
+            ") make sure there is at least one of them stored")
     return result;
 end
 
@@ -128,9 +137,10 @@ for _, interfaceDevice in ipairs(devices.interfaces) do
             local cluster = {}
 
             cluster.transposer = transposerDevice.address
-            cluster.interface = interfaceDevice.address
             cluster.interfaceSide = LocateSideType(transposerDevice, InterfaceName)
             cluster.beeSide = LocateSideType(transposerDevice, BeeAlvearyName)
+            cluster.interface = interfaceDevice.address
+            cluster.database = component.database.address
             cluster.databaseSlot = DatabaseSlot
 
             DatabaseSlot = DatabaseSlot + 1
