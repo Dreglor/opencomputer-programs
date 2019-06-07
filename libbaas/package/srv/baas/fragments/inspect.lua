@@ -2,15 +2,17 @@ local component = require('component')
 local log = require('libLog')
 
 --[[
-    must return:
+    returns:
     {
-        transposer = <transposer address>,
-        interface = <me_interface address>,
-        beeSide = <side of bee_housing>,
-        interfaceSide = <side of bee_housing>},
-        database = <database address>,
-        databaseSlot = <database address>
-         ...
+        {
+            transposer = <transposer address>,
+            interface = <me_interface address>,
+            beeSide = <side of bee_housing>,
+            interfaceSide = <side of bee_housing>},
+            database = <database address>,
+            databaseSlot = <database address>
+        },
+        ...
     }
 ]]
 
