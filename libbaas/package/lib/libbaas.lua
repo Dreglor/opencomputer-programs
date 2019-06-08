@@ -74,8 +74,8 @@ local function Discover()
 end
 
 local function SendFragment(address, file, callback)
-    local handle = io.open(FRAGMENTPATH..file)
-    local data = handle.read("*a")
+    local handle = io.open(FRAGMENTPATH..file, "rb")
+    local data = handle:read("*a")
 
     handle:close()
 
@@ -84,10 +84,6 @@ local function SendFragment(address, file, callback)
 end
 
 local function InspectCallback(remote, status, result)
-    if (status == false) then
-        return
-    end
-
     if (status == false) then
         log.Error("Failed to inpsect node [" .. remote .. "]")
         return
@@ -118,8 +114,6 @@ local function InspectCallback(remote, status, result)
         }
         Nodes[Node.interface] = Node;
     end
-
-    Nodes = {}
 end
 
 local function Inspect()
@@ -138,11 +132,15 @@ local function Inspect()
 end
 
 local function SendNodeFragment(node, file, response)
-    Send(Nodes[node].address, file, response)
+    SendFragment(Nodes[node].address, file, response)
 end
 
 function lib.GetNodes()
     return Nodes
+end
+
+function lib.GetDrones()
+    return Drones;
 end
 
 function lib.GetStatus(node)
@@ -191,7 +189,7 @@ function lib.OnResponse(_, interface, remote, data)
         InterfaceMap[remote] = interface
     end
 
-    if (Drones[remote] ~= nil) then
+    if (Drones[remote] == nil) then
         Drones[remote] = {}
     end
 
@@ -199,7 +197,7 @@ function lib.OnResponse(_, interface, remote, data)
 
     if (operator.Action ~= nil) then
         operator.Action(remote, status, result)
-        operator.Action = nil --clear the action so it only gets called once
+        Drones[remote].Action = nil --clear the action so it only gets called once
     end
 
     operator.LastTime = os.time()
