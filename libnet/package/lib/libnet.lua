@@ -5,7 +5,6 @@ local component = require("component")
 local event = require("event")
 local os = require("os")
 local math = require("math")
-local log = require("liblog")
 
 --const
 local MODEMTYPE = "modem"
@@ -20,6 +19,7 @@ local PACKETSIZE = 4096 --max packet size default in config is 8192
 
 local MAXPACKETSRATE = 4
 local Timer
+local Listeners = {}
 
 --device event handlers
 function lib.OnAdd(_, address, type)
@@ -28,12 +28,16 @@ function lib.OnAdd(_, address, type)
     end
 
     local modem = component.proxy(address)
-    
+
     modem.setWakeMessage(WAKEMESSAGE)
     Interfaces[address] = {
         proxy = modem,
         packetRate = 0
     }
+
+    for port,_ in pairs(Listeners) do
+        modem.open(port)
+    end
 end
 
 function lib.OnRemove(_, address, type)
@@ -47,6 +51,42 @@ function lib.OnRemove(_, address, type)
 
     --no need to close the port the device removal will do that for us
     Interfaces[address] = nil
+end
+
+function lib.StartListening(port, callback)
+    if (Listeners[port] == nil) then
+        Listeners[port] = {}
+        Listeners[port].callbacks = {} 
+    end
+
+    for _,interface in pairs(Interfaces) do
+        interface.proxy.open(port)
+    end
+
+    if (callback ~= nil) then
+        Listeners[port].callbacks[#Listeners[port].callbacks + 1] = callback
+        return #Listeners[port].callbacks
+    end
+
+    return
+end
+
+function lib.StopListening(port, handle)
+    if (handle == nil) then
+        for _,interface in pairs(Interfaces) do
+            interface.proxy.close(port)
+        end
+        Listeners[port] = nil
+    else
+        table.remove(Listeners[port].callbacks, handle)
+    end
+
+    if (#Listeners[port].callbacks == 0) then
+        Listeners[port] = nil
+        for _,interface in pairs(Interfaces) do
+            interface.proxy.close(port)
+        end 
+    end
 end
 
 function lib.Cooldown(interface)
@@ -67,7 +107,7 @@ local function GatedSend(interface, to, port, payload)
     return device.proxy.send(to, port, payload)
 end
 
-local function GatedBroadcast(device, port, payload)
+local function GatedBroadcast(interface, port, payload)
     local device = Interfaces[interface]
 
     while (device.packetRate >= 0) do
@@ -121,10 +161,7 @@ function lib.Broadcast(payload, port, interface)
 
     for _, address in ipairs(broadcasting) do
         if (#payload < PACKETSIZE) then
-            if (GatedBroadcast(Interfaces[address], port, payload) == false) then
-                log.Fatal("Unable to broadcast message, this should always work unless the device has " ..
-                              "been removed!")
-            end
+            GatedBroadcast(Interfaces[address], port, payload)
         else
             if (#payload == PACKETSIZE) then
                 -- pad out one character to ensure to avoid corner cases
@@ -135,11 +172,7 @@ function lib.Broadcast(payload, port, interface)
             local i = 0
             local fragment = string.sub(payload, 1, PACKETSIZE)
             while (fragment ~= "") do
-                if (GatedBroadcast(Interfaces[address], port, fragment) == false) then
-                    log.Fatal("Unable to broadcast message, this should always work unless the device has " ..
-                              "been removed!")
-                end
-
+                GatedBroadcast(Interfaces[address], port, fragment)
                 i = i + 1
                 fragment = string.sub(payload, (i * PACKETSIZE) + 1, (i + 1) * PACKETSIZE)
             end
@@ -147,11 +180,6 @@ function lib.Broadcast(payload, port, interface)
     end
 end
 
---event Handlers
-function lib.OnNetwork(_, sentTo)
-    local device = Interfaces[sentTo]
-    device.packetRate = device.packetRate + 1
-end
 
 function lib.Wake(interface, address)
     if (interface == nil) then
@@ -169,6 +197,27 @@ function lib.Wake(interface, address)
     end
 end
 
+function lib.GetInterfaces()
+    local result = {}
+
+    for address,_ in pairs(Interfaces) do
+        result[#result] = address
+    end
+    return Interfaces
+end
+
+--event Handlers
+function lib.OnNetwork(_, sentTo, from, port, _, data)
+    local device = Interfaces[sentTo]
+    device.packetRate = device.packetRate + 1
+    if (Listeners[port] ~= nil and #Listeners[port].callbacks > 0) then
+        for _,callback in ipairs(Listeners[port].callbacks) do
+            callback(sentTo, from, port, data)
+        end
+    end
+end
+
+--general startup
 if (Timer == nil) then
     Timer = event.timer(1/MAXPACKETSRATE, lib.Cooldown, math.huge)
     event.listen(COMPONENTADDEVENT, lib.OnAdd)
