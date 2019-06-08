@@ -2,9 +2,10 @@
 
 local lib = {}
 local net = require("libnet")
-local os = require("os")
+local io = require("io")
+local serialization = require("serialization")
 
-lib.Level {
+lib.Level = {
     ["FATAL"] = 1,
     ["ERROR"] = 2,
     ["WARNING"] = 3,
@@ -21,9 +22,10 @@ local DisplayLevel = lib.Level["ERROR"]
 local RecordLevel = lib.Level["WARNING"]
 local BroadcastLevel = lib.Level["INFO"]
 
-local LogName = "general"
 local RecordPath = "/var/log/"
 local LOGPORT = 1110
+local ListenerId = nil
+
 
 function lib.SetDisplayLevel(level)
     if (type(level) ~= "number") then
@@ -49,11 +51,7 @@ function lib.SetBroadcastLevel(level)
     BroadcastLevel = level
 end
 
-function lib.SetLogName(name)
-    LogName = name
-end
-
-local function Record(level, message)
+local function Record(level, message, application, from)
     local numberLevel
     if (type(level) == "number") then
         numberLevel = level
@@ -66,12 +64,20 @@ local function Record(level, message)
         return
     end
 
-    local handle = os.open(RecordPath..LogName, "a")
-    handle:write("[" .. tostring(os.time) .. "] <".. level .."> - " .. message)
+    if (application == nil) then
+        application = "general"
+    end
+
+    if (from == nil) then
+        from = "local"
+    end
+
+    local handle = io.open(RecordPath..from..application..".log", "a")
+    handle:write("[" .. tostring(os.time) .. "] <".. application .."> @ ".. from .." - " .. level .. " - " .. message)
     handle:close()
 end
 
-local function Broadcast(level, message)
+local function Broadcast(level, message, application)
     local numberLevel
     if (type(level) == "number") then
         numberLevel = level
@@ -84,11 +90,20 @@ local function Broadcast(level, message)
         return
     end
 
-    local payload = {Time = os.time(), Name = LogName, Level = level, Message = message}
-    net.Broadcast(payload, LOGPORT)
+    if (application == nil) then
+        application = "general"
+    end
+
+    local payload = {Time = os.time(), Level = level, Application = application, Message = message}
+
+    local interfaces = net.GetInterfaces()
+    for _,interface in ipairs(interfaces) do
+        payload.From = interface
+        net.Broadcast(payload, LOGPORT, interface)
+    end
 end
 
-local function Display(level, message)
+local function Display(level, message, application, from)
     local numberLevel
     if (type(level) == "number") then
         numberLevel = level
@@ -101,13 +116,19 @@ local function Display(level, message)
         return
     end
 
-    print("[".. level .."] - " .. message)
+    print("[".. application .."] @ " .. from .. " - " .. level .. " - " .. message)
 end
 
-local function Log(level, message)
+local function Log(level, message, who)
     Display(level, message)
     Broadcast(level, message)
     Record(level, message)
+end
+
+local function Sink(_, _, _, data)
+    local data = serialization.unserialize(data)
+    Display(data.Level, data.Message, data.Application, data.From)
+    Record(data.Level, data.Message, data.Application, data.From)
 end
 
 function lib.Fatal(message)
@@ -125,6 +146,29 @@ end
 
 function lib.Info(message)
     Log("INFO", message)
+end
+
+function lib.Debug(message)
+    Log("DEBUG", message)
+end
+
+function lib.StartService()
+    ListenerId = net.StartListening(LOGPORT, Sink)
+end
+
+function lib.StopService()
+    net.StopListening(LOGPORT)
+    ListenerId = nil
+end
+
+function lib.ServiceStatus()
+    if (ListenerId ~= nil) then
+        print("LogSink Deamon is currently RUNNING")
+    else
+        print("LogSink Deamon is currently STOPPED")
+    end
+
+    return ListenerId ~= nil
 end
 
 return lib
